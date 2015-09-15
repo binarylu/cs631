@@ -1,0 +1,33 @@
+I choose “cat” and “mkdir” and compare the different implement in NetBSD and Linux. The reason I choose these two source code is that “cat” and “mkdir ” are among the most frequently used tools in UNIX.
+
+In NetBSD:
+
+“cat”:
+
+“cat” has two different implements, “cook_args()” and “raw_args()”. “cook_args()” is for all the arguments “b e n s t v”, while “cook_args()” is for the others. After checking the manual page, cat will only attempt to display regular files if “-f” is added.
+
+“cook_args()” uses “fopen()” to open the files in the arguments (if the argument is ‘-’, the file will be the stdin), and call “cook_buf()” to print the file content to the stdout. The output format depends on the different arguments, for example, line numbers will be printed if “-n” is added. “cook_buf()” uses “putchar()” to print the contents.
+
+“raw_args()” uses “open()” to open the files. Do the almost same thing with “cook_args()” and then call “raw_cat()” to print the content. “raw_cat()” uses “write()” to print the contents to the stdout.
+
+“fopen()” is a library function while “open” is a system call. I think the reason why “cat” has two implements is that system call “write()” can print file content easily but it can not control the format. Library function “putchar()” print character one by one, so it is more convenient to control the output format.
+
+“mkdir”:
+
+“mkdir” is relatively simple. It has only two arguments “m” and “p”. “m” is used to set the directory permission and “p” is used to create parent directories as needed. In the source code, BSD library functions “setmode()” and “getmode()” are used to get the permission setting from the arguments and system call “chmod()” is used to set the permission. And system call “mkdir()” is used to create directoy. When “p” is specified, the function “mkpath()” in the source will call “mkdir()”repeatedly to create each intermediate directories.
+
+In Linux:
+
+“cat”:
+
+“cat” in Linux is a little different from that in NetBSD. “cat” in Linux has no “f l” arguments. “cat” in Linux do almost the same thing with in NetBSD, but the implements are totally different. If arguments “n e s t v” are not specified, “simple_cat()” will be called to print the file contents. Otherwise, function “cat()” will be called. “simple_cat()”, as its name, is simple and it uses “safe_read()” and “full_wirte()” to read and print the file contents. “safe_read()” and “full_write()” are implemented by system call “read()” and “write()”, but improve the function security to ensure read and write correctly.  “cat()” is to print the file content according to the format specified.
+
+“mkdir”:
+
+“mkdir” in Linux source code is more complicated then in NetBSD. It also uses system calls “chmod” and “mkdir” to set the permissions and create directories. However, mkdir.c does not call these system calls directly. These system calls are encapsulated by functions in other files and mkdir.c only use this functions. The reason why these system calls are encapsulated is the security. With these extra works, race condition can be avoided. Many of these security are not only used in mkdir.c, and they can also be used in our own code to improve the security of our program.
+
+
+Comparison:
+
+“cat” and “mkdir” in NetBSD and Linux have the same function, but they have different implements. The common they have is that they are all implemented by the same system calls, no matter how complex the functions they use. The difference is that source codes in Linux consider many security issues, while those in NetBSD call the system calls directly.
+
