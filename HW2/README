@@ -1,0 +1,10 @@
+This assignment is not too hard but a little troublesome to handle the users'
+input, the arguments. The source file is easy for the manual page said it can
+only be a regular file. However, the target file is complicated. I have to judge
+the taget is a regular file or a directory. When the target is followed by '/',
+I must treat it as a directory and process as a directory.
+
+I find an interesting thing. At first, I used open() to create the target file,
+but the permission is weird, it looks like it is random. Later on, I find the
+reason that I did not give a permission argument when I open it. So it is
+random. To conclude, permission must be given when create a file.
