@@ -1,6 +1,7 @@
 # vim
 # netrw is a kind of vim plugin/script which supports reading and writing files across networks. .netrwhist is a history file which maintains all the directories that were modified. So whenever you modify the contents of ~/.vim it adds one entry in .netrwhist
 .netrwhist
+.swp
 
 # Folder view configuration files
 .DS_Store

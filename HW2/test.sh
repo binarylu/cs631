@@ -17,7 +17,7 @@ doTest() {
     echo "./${prog} ${src} ${dst}"
     ./${prog} ${src} ${dst}
     if [ $? -ne 0 ]; then
-        [ $expe != "" ] && echo "${COLOR_GREEN}pass${COLOR_RESET}" || echo "${COLOR_RED}no${COLOR_RESET}"
+        [ "$expe" != "" ] && echo "${COLOR_GREEN}pass${COLOR_RESET}" || echo "${COLOR_RED}no${COLOR_RESET}"
         echo ""
         return 1;
     fi
@@ -77,6 +77,16 @@ s=${src_dir}/${prog}.c
 d=${dst_dir}/zz_regular
 doTest $s $d
 
+# $prog dir/file1 dir/subdir/subsubdir/
+src_dir=zz_dir_src
+dst_dir=zz_dir5/subdir/subdirdir
+mkdir -p ${src_dir}
+mkdir -p ${dst_dir}
+cp ${prog}.c ${src_dir}
+s=${src_dir}/${prog}.c
+d=${dst_dir}
+doTest $s $d
+
 s=none_exist
 d=zz_regular
 doTest $s $d 1
@@ -96,12 +106,13 @@ doTest $s $d 1
 
 mkfifo zz_fifo
 src=zz_fifo
-dst=zz_file_by_fifo
+dst="zz_file_by_fifo"
 echo "./${prog} $src $dst &"
 ./${prog} $src $dst &
 cat ${prog}.c > $src
+sleep 1
 md5_s=`md5sum ${prog}.c | cut -d' ' -f1`
-md5_d=`md5sum $dst | cut -d' ' -f1`
+md5_d=`md5sum ${dst} | cut -d' ' -f1`
 [ "$md5_s" == "$md5_d" ] && echo "${COLOR_GREEN}pass${COLOR_RESET}" || echo "${COLOR_RED}no${COLOR_RESET}"
 echo ""
 
