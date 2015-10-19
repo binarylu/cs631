@@ -2,56 +2,16 @@
 #include <unistd.h>
 #include <bsd/stdlib.h>
 #include <fts.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
 
-#define ISFLAG_A(f) (f)&0x00000001
-#define ISFLAG_a(f) (f)&0x00000002
-#define ISFLAG_C(f) (f)&0x00000004
-#define ISFLAG_c(f) (f)&0x00000008
-#define ISFLAG_d(f) (f)&0x00000010
-#define ISFLAG_F(f) (f)&0x00000020
-#define ISFLAG_f(f) (f)&0x00000040
-#define ISFLAG_h(f) (f)&0x00000080
-#define ISFLAG_i(f) (f)&0x00000100
-#define ISFLAG_k(f) (f)&0x00000200
-#define ISFLAG_l(f) (f)&0x00000400
-#define ISFLAG_n(f) (f)&0x00000800
-#define ISFLAG_q(f) (f)&0x00001000
-#define ISFLAG_R(f) (f)&0x00002000
-#define ISFLAG_r(f) (f)&0x00004000
-#define ISFLAG_S(f) (f)&0x00008000
-#define ISFLAG_s(f) (f)&0x00010000
-#define ISFLAG_t(f) (f)&0x00020000
-#define ISFLAG_u(f) (f)&0x00040000
-#define ISFLAG_w(f) (f)&0x00080000
-#define ISFLAG_x(f) (f)&0x00100000
-#define ISFLAG_1(f) (f)&0x00200000
+#include "options.h"
+#include "prints.h"
+#include "compare.h"
 
-#define SETFLAG_A(f) do { (f)|=0x00000001; } while(0)
-#define SETFLAG_a(f) do { (f)|=0x00000002; } while(0)
-#define SETFLAG_C(f) do { (f)|=0x00000004; } while(0)
-#define SETFLAG_c(f) do { (f)|=0x00000008; } while(0)
-#define SETFLAG_d(f) do { (f)|=0x00000010; } while(0)
-#define SETFLAG_F(f) do { (f)|=0x00000020; } while(0)
-#define SETFLAG_f(f) do { (f)|=0x00000040; } while(0)
-#define SETFLAG_h(f) do { (f)|=0x00000080; } while(0)
-#define SETFLAG_i(f) do { (f)|=0x00000100; } while(0)
-#define SETFLAG_k(f) do { (f)|=0x00000200; } while(0)
-#define SETFLAG_l(f) do { (f)|=0x00000400; } while(0)
-#define SETFLAG_n(f) do { (f)|=0x00000800; } while(0)
-#define SETFLAG_q(f) do { (f)|=0x00001000; } while(0)
-#define SETFLAG_R(f) do { (f)|=0x00002000; } while(0)
-#define SETFLAG_r(f) do { (f)|=0x00004000; } while(0)
-#define SETFLAG_S(f) do { (f)|=0x00008000; } while(0)
-#define SETFLAG_s(f) do { (f)|=0x00010000; } while(0)
-#define SETFLAG_t(f) do { (f)|=0x00020000; } while(0)
-#define SETFLAG_u(f) do { (f)|=0x00040000; } while(0)
-#define SETFLAG_w(f) do { (f)|=0x00080000; } while(0)
-#define SETFLAG_x(f) do { (f)|=0x00100000; } while(0)
-#define SETFLAG_1(f) do { (f)|=0x00200000; } while(0)
 
 #define HANDLE_ERROR(msg)        \
 do {                             \
@@ -60,34 +20,48 @@ do {                             \
 } while (/* CONSTCOND */ 0)
 
 static void Usage();
-static void traverse(int argc, char *argv[], int options);
-static void display(FTSENT *p, FTSENT *list);
-static int compar(const FTSENT **a, const FTSENT **b);
+static void traverse(int argc, char *argv[], unsigned int flag, int termwidth);
+static void display(FTSENT *p, FTSENT *list, unsigned int flag, int termwidth);
+static int compare(const FTSENT **a, const FTSENT **b);
 static int (*sort)(const FTSENT *a, const FTSENT *b);
-static int sortByName(const FTSENT *a, const FTSENT *b);
+static void (*print)(_item_format *format, FTSENT *cur, unsigned int flag);
+
+unsigned int flag;
 
 int main(int argc, char *argv[])
 {
     int opt;
-    unsigned int flag;
+    struct winsize win;
+    int termwidth;
 
     static char *defaultPath[] = {".", NULL};
 
     setprogname(argv[0]);
 
-    /* temporary */
-    sort = sortByName;
-
     flag = 0;
+    if (isatty(STDOUT_FILENO)) {
+        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &win) == 0 &&
+                win.ws_col > 0)
+            termwidth = win.ws_col;
+        else
+            termwidth = -1;
+        SETFLAG_C(flag);
+        SETFLAG_q(flag);
+    } else {
+        termwidth = -1;
+        SETFLAG_w(flag);
+        SETFLAG_1(flag);
+    }
+
     while ((opt = getopt(argc, argv, "AaCcdFfhiklnqRrSstuwx1")) != -1) {
         switch (opt) {
+            case 'f': SETFLAG_f(flag);
+            case 'a': SETFLAG_a(flag);
             case 'A': SETFLAG_A(flag); break;
-            case 'a': SETFLAG_a(flag); break;
             case 'C': SETFLAG_C(flag); break;
             case 'c': SETFLAG_c(flag); break;
             case 'd': SETFLAG_d(flag); break;
             case 'F': SETFLAG_F(flag); break;
-            case 'f': SETFLAG_f(flag); break;
             case 'h': SETFLAG_h(flag); break;
             case 'i': SETFLAG_i(flag); break;
             case 'k': SETFLAG_k(flag); break;
@@ -106,14 +80,32 @@ int main(int argc, char *argv[])
             default: Usage();
         }
     }
-    int fts_options;
-    fts_options = FTS_PHYSICAL;
+
+    sort = ISFLAG_r(flag) ? rsortByName : sortByName;
+    if (ISFLAG_t(flag)) {
+        sort = ISFLAG_r(flag) ? rsortByMtime : sortByMtime;
+        if (ISFLAG_c(flag))
+            sort = ISFLAG_r(flag) ? rsortByCtime : sortByCtime;
+        else if (ISFLAG_u(flag))
+            sort = ISFLAG_r(flag) ? rsortByAtime : sortByAtime;
+    }
+    if (ISFLAG_S(flag))
+        sort = ISFLAG_r(flag) ? rsortBySize : sortBySize;
+
+    if (ISFLAG_1(flag)) {
+        print = print_1;
+    } else if (ISFLAG_l(flag)) {
+        print = print_l;
+    } else if (ISFLAG_C(flag)) {
+        print = print_C;
+    }
+
     argc -= optind;
     argv += optind;
     if (argc)
-        traverse(argc, argv, fts_options);
+        traverse(argc, argv, flag, termwidth);
     else
-        traverse(1, defaultPath, fts_options);
+        traverse(1, defaultPath, flag, termwidth);
     return 0;
 }
 
@@ -124,23 +116,35 @@ Usage() {
 }
 
 static void
-traverse(int argc, char *argv[], int options) {
+traverse(int argc, char *argv[], unsigned int flag, int termwidth) {
     FTS *ftsp;
     FTSENT *p, *chp;
+    int fts_options;
     int ch_options;
 
-    ch_options = FTS_NAMEONLY;
+    fts_options = getFtsOptions(flag);
 
-    if ((ftsp = fts_open(argv, options, compar)) == NULL)
+    if ((ftsp = fts_open(argv, fts_options, ISFLAG_f(flag) ? NULL : compare)) == NULL)
         HANDLE_ERROR("fts_open failed");
 
+    display(NULL, fts_children(ftsp, 0), flag, termwidth);
+    if (ISFLAG_d(flag)) {
+        fts_close(ftsp);
+        return;
+    }
+
+    ch_options = !ISFLAG_R(flag) && fts_options & FTS_NOSTAT ? FTS_NAMEONLY : 0;
     while ((p = fts_read(ftsp)) != NULL) {
         switch (p->fts_info) {
             case FTS_D:
+                if (p->fts_level != FTS_ROOTLEVEL &&
+                        p->fts_name[0] == '.' && !ISFLAG_A(flag))
+                    break;
                 if ((chp = fts_children(ftsp, ch_options)) == NULL)
                     HANDLE_ERROR("fts_children failed");
-                display(p, chp);
-                fts_set(ftsp, p, FTS_SKIP);
+                display(p, chp, flag, termwidth);
+                if (!ISFLAG_R(flag) && chp != NULL)
+                    fts_set(ftsp, p, FTS_SKIP);
                 break;
         }
     }
@@ -153,22 +157,117 @@ traverse(int argc, char *argv[], int options) {
 }
 
 static void
-display(FTSENT *p, FTSENT *list) {
+display(FTSENT *p, FTSENT *list, unsigned int flag, int termwidth) {
     FTSENT *cur;
+    _item_format format = {0};
+    int len, blocksize, blocknum, size;
+    int item_num = 0;
+    blocksize = getBlockSize(flag);
+
+    if (list == NULL)
+        return;
+
     for (cur = list; cur; cur = cur->fts_link) {
-        if (cur->fts_name[0] == '.')
+        if (cur->fts_info == FTS_ERR || cur->fts_info == FTS_NS) {
+            cur->fts_number = NO_PRINT;
             continue;
-        printf("%s  ", cur->fts_name);
+        }
+        if (p == NULL) {
+            /* Directories will be displayed later */
+            if (cur->fts_info == FTS_D && !ISFLAG_d(flag)) {
+                cur->fts_number = NO_PRINT;
+                continue;
+            }
+        } else {
+            if (cur->fts_name[0] == '.' && !ISFLAG_A(flag)){
+                cur->fts_number = NO_PRINT;
+                continue;
+            }
+        }
+        if (cur->fts_namelen > format.maxlen_name)
+            format.maxlen_name = cur->fts_namelen;
+        if (NEEDSTATS(flag)) {
+            if (cur->fts_statp == NULL) return;
+            len = getNumLen(cur->fts_statp->st_nlink);
+            if (len > format.maxlen_links)
+                format.maxlen_links = len;
+            
+            if (ISFLAG_n(flag)) {
+                len = getNumLen(cur->fts_statp->st_uid);
+            } else {
+                len = strlen(getUserNameByUID(cur->fts_statp->st_uid));
+            }
+            if (len > format.maxlen_owner)
+                format.maxlen_owner = len;
+
+            if (ISFLAG_n(flag)) {
+                len = getNumLen(cur->fts_statp->st_gid);
+            } else {
+                len = strlen(getGroupNameByGID(cur->fts_statp->st_gid));
+            }
+            if (len > format.maxlen_group)
+                format.maxlen_group = len;
+
+            if (ISFLAG_h(flag)) {
+                len = getHumanReadableLen(cur->fts_statp->st_size);
+            } else {
+                size = cur->fts_statp->st_size;
+                if (ISFLAG_k(flag)) {
+                    size = (int)ceil(size / 1024.0);
+                }
+                len = getNumLen(size);
+            }
+            if (len > format.maxlen_size)
+                format.maxlen_size = len;
+
+            blocknum = (int)ceil(cur->fts_statp->st_blocks * BLOCKSIZE / (double)blocksize);
+            format.total_block += blocknum;
+
+            if (ISFLAG_h(flag)) {
+                len = getHumanReadableLen(blocknum);
+            } else {
+                len = getNumLen(blocknum);
+            }
+            if (len > format.maxlen_blocknum)
+                format.maxlen_blocknum = len;
+
+            len = getNumLen(cur->fts_statp->st_ino);
+            if (len > format.maxlen_inode)
+                format.maxlen_inode = len;
+        }
+        ++item_num;
     }
-    printf("\n");
+    format.item_num = item_num;
+    format.termwidth = termwidth;
+    print(&format, list, flag);
 }
 
 static int
-compar(const FTSENT **a, const FTSENT **b) {
+compare(const FTSENT **a, const FTSENT **b) {
+    int a_info, b_info;
+
+    a_info = (*a)->fts_info;
+    if (a_info == FTS_ERR)
+        return 0;
+    b_info = (*b)->fts_info;
+    if (b_info == FTS_ERR)
+        return 0;
+
+    if (a_info == FTS_NS || b_info == FTS_NS) {
+        if (b_info != FTS_NS)
+            return 1;
+        else if (a_info != FTS_NS)
+            return -1;
+        else
+            return sortByName(*a, *b);
+    }
+
+    if (a_info != b_info && !ISFLAG_d(flag) && 
+            (*a)->fts_level == FTS_ROOTLEVEL) {
+        if (a_info == FTS_D)
+            return 1;
+        else if (b_info == FTS_D)
+            return 0;
+    }
     return sort(*a, *b);
-}
-
-static int
-sortByName(const FTSENT *a, const FTSENT *b) {
-    return (strcmp(a->fts_name, b->fts_name));
 }
