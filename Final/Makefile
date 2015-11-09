@@ -1,9 +1,12 @@
 BIN = main
-OBJ = net.o \
+OBJ = util.o \
+	  task_queue.o \
+	  handle.o \
+	  net.o \
 	  main.o
 
 CFLAGS = -g -Wall -pedantic-errors
-LIB = -pthread
+LIB = -lbsd -pthread
 
 $(BIN): $(OBJ)
 	$(CC) -o $(BIN) $^ $(LIB)
