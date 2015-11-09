@@ -16,9 +16,10 @@
 
 typedef struct __client_info {
     int fd;
-    struct sockaddr_in addr;
+    struct sockaddr_storage addr;
 } _client_info;
 
+extern int sockaddr2string(struct sockaddr *sa, char *address);
 
 extern void network_loop(char *address, char *port);
 

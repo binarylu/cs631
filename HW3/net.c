@@ -7,7 +7,6 @@ init_net(char *address, char *port, int *sock)
 {
     int s, v, i;
     struct addrinfo hints, *result, *rp;
-    struct sockaddr_in server_addr;
 
     memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
@@ -48,16 +47,38 @@ init_net(char *address, char *port, int *sock)
     return 0;
 }
 
+int
+sockaddr2string(struct sockaddr *sa, char *address)
+{
+    struct sockaddr_in *server;
+    struct sockaddr_in6 *server6;
+    if (sa->sa_family == AF_INET) {
+        server = (struct sockaddr_in *)sa;
+        if (inet_ntop(sa->sa_family, &(server->sin_addr), address, INET6_ADDRSTRLEN) == NULL) {
+            perror("inet_ntop");
+            return -1;
+        }
+    } else {
+        server6 = (struct sockaddr_in6 *)sa;
+        if (inet_ntop(sa->sa_family, &(server6->sin6_addr), address, INET6_ADDRSTRLEN) == NULL) {
+            perror("inet_ntop");
+            return -1;
+        }
+    }
+    return 0;
+}
+
 void
 network_loop(char *address, char *port)
 {
     int listen_sock[2], connfd, fd_max = -1;
-    struct sockaddr_in client_addr;
+    struct sockaddr_storage client_addr;
     socklen_t client_addrlen;
     fd_set fdset, rset;
     int nread;
     char buf[BUFFSIZE];
     _client_info client[FD_SETSIZE];
+    char ip[INET6_ADDRSTRLEN] = {0};
     int i, m, maxi = -1;
 
     client_addrlen = sizeof(struct sockaddr_in);
@@ -82,6 +103,8 @@ network_loop(char *address, char *port)
         }
         for (m = 0; m < 2; ++m) {
             if (FD_ISSET(listen_sock[m], &rset)) {
+                client_addrlen = sizeof(client_addr);
+                memset(&client_addr, 0, client_addrlen);
                 if ((connfd = accept(listen_sock[m], (struct sockaddr *)&client_addr, &client_addrlen)) <= 0) {
                     perror("accept");
                 } else {
@@ -89,7 +112,8 @@ network_loop(char *address, char *port)
                         if (client[i].fd < 0) {
                             client[i].fd = connfd;
                             client[i].addr = client_addr;
-                            printf("Get connection from %s.\n", inet_ntoa(client[i].addr.sin_addr));
+                            sockaddr2string((struct sockaddr *)&client_addr, ip);
+                            printf("Get connection from %s.\n", ip);
                             break;
                         }
                     }
@@ -112,20 +136,23 @@ network_loop(char *address, char *port)
                     perror("read");
                     close(connfd);
                 } else if (nread == 0) {
-                    fprintf(stdout, "Connection with client %s is closed\n", inet_ntoa(client_addr.sin_addr));
+                    sockaddr2string((struct sockaddr *)&client_addr, ip);
+                    fprintf(stdout, "Connection with client %s is closed\n", ip);
                     FD_CLR(connfd, &fdset);
                     close(connfd);
                     client[i].fd = -1;
                 } else {
                     if (strncmp(buf, "CLOSE", 5) == 0) {
-                        fprintf(stdout, "Client %s closes the connection\n", inet_ntoa(client_addr.sin_addr));
+                        sockaddr2string((struct sockaddr *)&client_addr, ip);
+                        fprintf(stdout, "Client %s closes the connection\n", ip);
                         FD_CLR(connfd, &fdset);
                         close(connfd);
                         client[i].fd = -1;
                         break;
                     }
                     buf[nread] = 0;
-                    fprintf(stdout, "Client %s says: %s\n", inet_ntoa(client_addr.sin_addr), buf);
+                    sockaddr2string((struct sockaddr *)&client_addr, ip);
+                    fprintf(stdout, "Client %s says: %s\n", ip, buf);
                 }
             }
         }
